@@ -10,6 +10,7 @@
 (define parser-tests
   (test-suite
    "frontend core lowering"
+   ;; Test: when macro desugars to if-expr with void else branch
    (test-case "when lowers into a neutral if expression"
      (define ir
        (parse-source-string
@@ -23,6 +24,7 @@
         (check-true (void? else-value))]
        [_
         (fail "expected the surface 'when' form to lower into define-function + if-expr")]))
+   ;; Test: cond macro desugars to nested if-expr chain
    (test-case "cond lowers into nested if expressions"
      (define ir
        (parse-source-string
@@ -33,6 +35,7 @@
         (void)]
        [_
         (fail "expected cond to lower into a neutral if-expr")]))
+   ;; Test: and macro desugars to nested if-expr for short-circuit evaluation
    (test-case "and lowers into nested if expressions"
      (define ir
        (parse-source-string
@@ -43,6 +46,7 @@
         (void)]
        [_
         (fail "expected and to lower into nested if-expr")]))
+   ;; Test: or macro desugars to if-expr with temporary binding to avoid re-evaluation
    (test-case "or lowers into nested if with temp binding"
      (define ir
        (parse-source-string
@@ -53,6 +57,7 @@
         (void)]
        [_
         (fail "expected or to lower into neutral IR")]))
+   ;; Test: let* macro desugars to nested let-expr for sequential bindings
    (test-case "let* lowers into nested let expressions"
      (define ir
        (parse-source-string
@@ -63,6 +68,7 @@
         (void)]
        [_
         (fail "expected let* to lower into nested let-expr")]))
+   ;; Test: case macro desugars to nested if-expr with equal? comparisons
    (test-case "case lowers into nested if/equal? expressions"
      (define ir
        (parse-source-string
@@ -77,6 +83,7 @@
 (define desugaring-integration-tests
   (test-suite
    "desugaring integration tests"
+   ;; Test: and macro generates short-circuit conditional logic in target language
    (test-case "and with multiple expressions short-circuits correctly"
      (define code
        (transpile-string
@@ -84,6 +91,7 @@
         'and-integration
         #:target 'python))
      (check-not-false (regexp-match? #rx"if.*:" code)))
+   ;; Test: or macro generates code that evaluates each expression only once
    (test-case "or with multiple expressions evaluates once"
      (define code
        (transpile-string
@@ -91,6 +99,7 @@
         'or-integration
         #:target 'python))
      (check-not-false (regexp-match? #rx"result = " code)))
+   ;; Test: let* macro generates sequential variable bindings in target language
    (test-case "let* allows sequential bindings"
      (define code
        (transpile-string
@@ -99,6 +108,7 @@
         #:target 'python))
      (check-not-false (regexp-match? #rx"x = 1" code))
      (check-not-false (regexp-match? #rx"y = " code)))
+   ;; Test: case macro generates equality checks for pattern matching in target language
    (test-case "case matches values correctly"
      (define code
        (transpile-string
@@ -110,6 +120,7 @@
 (define backend-tests
   (test-suite
    "backend dispatch"
+   ;; Test: Python backend generates correct import statements and function calls
    (test-case "python target stays behind the backend registry"
      (check-equal? (available-targets) '(python cpp rust javascript))
      (define code
@@ -120,10 +131,12 @@
      (check-not-false (regexp-match? #rx"import numpy as np" code))
      (check-not-false (regexp-match? #rx"from pandas import DataFrame" code))
      (check-not-false (regexp-match? #rx"np\\.array\\(\\[1, 2, 3\\], dtype=\"float64\"\\)" code)))
+   ;; Test: transpiler raises error when given unsupported target language
    (test-case "unknown backend fails loudly"
      (check-exn exn:fail?
                 (lambda ()
                   (transpile-string "#lang racket\n42" #:target 'javascript))))
+   ;; Test: C++ backend generates valid C++20 code with includes and standard library calls
    (test-case "cpp target emits C++20 code"
      (define code
        (transpile-string
@@ -136,6 +149,7 @@
      (check-not-false (regexp-match? #rx"auto score\\(auto x\\)" code))
      (check-not-false (regexp-match? #rx"std::vector\\{1, 2, 3\\}" code))
      (check-not-false (regexp-match? #rx"int main\\(\\)" code)))
+   ;; Test: Rust backend generates valid Rust code with use statements and closures
    (test-case "rust target emits Rust code"
      (define code
        (transpile-string
@@ -146,6 +160,7 @@
      (check-not-false (regexp-match? #rx"fn main\\(\\)" code))
      (check-not-false (regexp-match? #rx"let score = \\|x\\|" code))
      (check-not-false (regexp-match? #rx"vec!\\[1, 2, 3\\]" code)))
+   ;; Test: JavaScript backend generates valid ES6+ code with imports and arrow functions
    (test-case "javascript target emits JavaScript ES6+ code"
      (define code
        (transpile-string
@@ -160,6 +175,7 @@
 (define compile-tests
   (test-suite
    "native compile smoke tests"
+   ;; Test: generated JavaScript code runs successfully with Node.js runtime
    (test-case "generated JavaScript runs with Node.js"
      (define node (find-executable-path "node"))
      (unless node
@@ -180,6 +196,7 @@
          #:exists 'replace))
      (check-true run-ok?)
      (check-equal? (file->string output-path) "15\n14\n[ 1, 2, 3 ]\n"))
+   ;; Test: generated C++ code compiles with C++20 compiler and runs successfully
    (test-case "generated C++ compiles and runs"
      (define cxx (or (find-executable-path "c++")
                      (find-executable-path "clang++")
@@ -206,6 +223,7 @@
          #:exists 'replace))
      (check-true run-ok?)
      (check-equal? (file->string output-path) "root\n4\n14\n[1, 2, 3]\n"))
+   ;; Test: generated Rust code compiles with rustc and runs successfully
    (test-case "generated Rust compiles and runs"
      (define rustc (find-executable-path "rustc"))
      (unless rustc
