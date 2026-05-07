@@ -159,9 +159,17 @@
                  (literal (void)))]
        [`(cond ,clauses ...)
         (parse-cond clauses)]
+       [`(and ,exprs ...)
+        (parse-and exprs)]
+       [`(or ,exprs ...)
+        (parse-or exprs)]
        [`(let (,bindings ...) ,body ...)
         (let-expr (map parse-binding bindings)
                   (parse-body body 'let))]
+       [`(let* (,bindings ...) ,body ...)
+        (parse-let* bindings body)]
+       [`(case ,key-expr ,clauses ...)
+        (parse-case key-expr clauses)]
        [`(lambda (,params ...) ,body ...)
         (lambda-expr (map parse-parameter params)
                      (parse-body body 'lambda))]
@@ -231,6 +239,73 @@
                    (loop (cdr rest)))]
          [_
           (error 'parse-cond "unsupported cond clause: ~e" (car rest))])])))
+
+(define (parse-and exprs)
+  (cond
+    [(null? exprs) (literal #t)]
+    [(null? (cdr exprs)) (parse-expr (car exprs))]
+    [else
+     (if-expr (parse-expr (car exprs))
+              (parse-and (cdr exprs))
+              (literal #f))]))
+
+(define (parse-or exprs)
+  (cond
+    [(null? exprs) (literal #f)]
+    [(null? (cdr exprs)) (parse-expr (car exprs))]
+    [else
+     (let ([temp-name (gensym-string "or-temp")])
+       (let-expr (list (binding temp-name (parse-expr (car exprs))))
+                 (list (if-expr (var-ref temp-name)
+                                (var-ref temp-name)
+                                (parse-or (cdr exprs))))))]))
+
+(define (parse-let* bindings body)
+  (cond
+    [(null? bindings)
+     (make-sequence-expr body 'let*)]
+    [else
+     (let-expr (list (parse-binding (car bindings)))
+               (list (parse-let* (cdr bindings) body)))]))
+
+(define (parse-case key-expr clauses)
+  (let ([key-name (gensym-string "case-key")])
+    (let-expr (list (binding key-name (parse-expr key-expr)))
+              (list (parse-case-clauses (var-ref key-name) clauses)))))
+
+(define (parse-case-clauses key-ref clauses)
+  (let loop ([rest clauses])
+    (cond
+      [(null? rest) (literal (void))]
+      [else
+       (match (car rest)
+         [`(else ,body ...)
+          (unless (null? (cdr rest))
+            (error 'parse-case "else clause must be the last case clause"))
+          (make-sequence-expr body 'case)]
+         [`((,values ...) ,body ...)
+          (if-expr (parse-case-test key-ref values)
+                   (make-sequence-expr body 'case)
+                   (loop (cdr rest)))]
+         [_
+          (error 'parse-case "unsupported case clause: ~e" (car rest))])])))
+
+(define (parse-case-test key-ref values)
+  (cond
+    [(null? values) (literal #f)]
+    [(null? (cdr values))
+     (application (var-ref "equal?")
+                  (list key-ref (parse-expr (car values)))
+                  '())]
+    [else
+     (if-expr (application (var-ref "equal?")
+                           (list key-ref (parse-expr (car values)))
+                           '())
+              (literal #t)
+              (parse-case-test key-ref (cdr values)))]))
+
+(define (gensym-string prefix)
+  (string-append prefix (number->string (current-inexact-milliseconds))))
 
 (define (parse-binding datum)
   (match datum
