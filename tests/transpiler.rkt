@@ -32,7 +32,80 @@
        [(program (list (define-value "answer" (if-expr _ (literal 1) (literal 0)))))
         (void)]
        [_
-        (fail "expected cond to lower into a neutral if-expr")]))))
+        (fail "expected cond to lower into a neutral if-expr")]))
+   (test-case "and lowers into nested if expressions"
+     (define ir
+       (parse-source-string
+        "#lang racket\n(define result (and a b c))"
+        'and-sample))
+     (match ir
+       [(program (list (define-value "result" (if-expr (var-ref "a") _ _))))
+        (void)]
+       [_
+        (fail "expected and to lower into nested if-expr")]))
+   (test-case "or lowers into nested if with temp binding"
+     (define ir
+       (parse-source-string
+        "#lang racket\n(define result (or a b))"
+        'or-sample))
+     (match ir
+       [(program (list (define-value "result" _)))
+        (void)]
+       [_
+        (fail "expected or to lower into neutral IR")]))
+   (test-case "let* lowers into nested let expressions"
+     (define ir
+       (parse-source-string
+        "#lang racket\n(define result (let* ([x 1] [y (+ x 1)]) y))"
+        'let*-sample))
+     (match ir
+       [(program (list (define-value "result" (let-expr _ _))))
+        (void)]
+       [_
+        (fail "expected let* to lower into nested let-expr")]))
+   (test-case "case lowers into nested if/equal? expressions"
+     (define ir
+       (parse-source-string
+        "#lang racket\n(define result (case x [(1) 'one] [(2) 'two] [else 'other]))"
+        'case-sample))
+     (match ir
+       [(program (list (define-value "result" _)))
+        (void)]
+       [_
+        (fail "expected case to lower into neutral IR")]))))
+
+(define desugaring-integration-tests
+  (test-suite
+   "desugaring integration tests"
+   (test-case "and with multiple expressions short-circuits correctly"
+     (define code
+       (transpile-string
+        "#lang racket\n(define result (and (> x 0) (< x 10) (not (= x 5))))"
+        'and-integration
+        #:target 'python))
+     (check-not-false (regexp-match? #rx"if.*:" code)))
+   (test-case "or with multiple expressions evaluates once"
+     (define code
+       (transpile-string
+        "#lang racket\n(define result (or (get-a) (get-b) (get-c)))"
+        'or-integration
+        #:target 'python))
+     (check-not-false (regexp-match? #rx"result = " code)))
+   (test-case "let* allows sequential bindings"
+     (define code
+       (transpile-string
+        "#lang racket\n(define result (let* ([x 1] [y (+ x 1)] [z (+ y 1)]) z))"
+        'let*-integration
+        #:target 'python))
+     (check-not-false (regexp-match? #rx"x = 1" code))
+     (check-not-false (regexp-match? #rx"y = " code)))
+   (test-case "case matches values correctly"
+     (define code
+       (transpile-string
+        "#lang racket\n(define result (case x [(1 2) 'small] [(3 4 5) 'medium] [else 'large]))"
+        'case-integration
+        #:target 'python))
+     (check-not-false (regexp-match? #rx"equal\\?" code)))))
 
 (define backend-tests
   (test-suite
@@ -130,5 +203,6 @@
 
 (module+ test
   (run-tests parser-tests)
+  (run-tests desugaring-integration-tests)
   (run-tests backend-tests)
   (run-tests compile-tests))
