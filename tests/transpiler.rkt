@@ -38,7 +38,7 @@
   (test-suite
    "backend dispatch"
    (test-case "python target stays behind the backend registry"
-     (check-equal? (available-targets) '(python cpp rust))
+     (check-equal? (available-targets) '(python cpp rust javascript))
      (define code
        (transpile-string
         "#lang racket\n(import (numpy np) (:from pandas DataFrame))\n(py-call np.array (list 1 2 3) #:dtype \"float64\")"
@@ -72,11 +72,41 @@
      (check-not-false (regexp-match? #rx"use std::f64::consts::PI;" code))
      (check-not-false (regexp-match? #rx"fn main\\(\\)" code))
      (check-not-false (regexp-match? #rx"let score = \\|x\\|" code))
-     (check-not-false (regexp-match? #rx"vec!\\[1, 2, 3\\]" code)))))
+     (check-not-false (regexp-match? #rx"vec!\\[1, 2, 3\\]" code)))
+   (test-case "javascript target emits JavaScript ES6+ code"
+     (define code
+       (transpile-string
+        "#lang racket\n(import (:from math sqrt))\n(define (score x) (if (> x 10) (+ x 2) (- x 2)))\n(define values (list 1 2 3))\n(define result (+ 5 10))\n(displayln result)\n(displayln (score 12))\n(displayln values)"
+        'javascript-sample
+        #:target 'javascript))
+     (check-not-false (regexp-match? #rx"import \\{ sqrt \\} from 'math';" code))
+     (check-not-false (regexp-match? #rx"function score\\(" code))
+     (check-not-false (regexp-match? #rx"\\[1, 2, 3\\]" code))
+     (check-not-false (regexp-match? #rx"console\\.log" code)))))
 
 (define compile-tests
   (test-suite
    "native compile smoke tests"
+   (test-case "generated JavaScript runs with Node.js"
+     (define node (find-executable-path "node"))
+     (unless node
+       (fail "no Node.js runtime found in PATH"))
+     (define temp-dir (make-temporary-file "omnilisp-js-test-~a" 'directory))
+     (define source-path (build-path temp-dir "sample.js"))
+     (define output-path (build-path temp-dir "output.txt"))
+     (define code
+       (transpile-string
+        "#lang racket\n(define (score x) (if (> x 10) (+ x 2) (- x 2)))\n(define values (list 1 2 3))\n(define result (+ 5 10))\n(displayln result)\n(displayln (score 12))\n(displayln values)"
+        'js-compile-sample
+        #:target 'javascript))
+     (display-to-file code source-path #:exists 'replace)
+     (define run-ok?
+       (with-output-to-file output-path
+         (lambda ()
+           (system* node (path->string source-path)))
+         #:exists 'replace))
+     (check-true run-ok?)
+     (check-equal? (file->string output-path) "15\n14\n[ 1, 2, 3 ]\n"))
    (test-case "generated C++ compiles and runs"
      (define cxx (or (find-executable-path "c++")
                      (find-executable-path "clang++")

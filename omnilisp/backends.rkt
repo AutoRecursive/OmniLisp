@@ -5,7 +5,8 @@
          racket/string
          (only-in "cpp-backend.rkt" [emit-program emit-cpp-program])
          (only-in "python-backend.rkt" [emit-program emit-python-program])
-         (only-in "rust-backend.rkt" [emit-program emit-rust-program]))
+         (only-in "rust-backend.rkt" [emit-program emit-rust-program])
+         (only-in "javascript-backend.rkt" [emit-program emit-javascript-program]))
 
 (provide (struct-out backend)
          available-backends
@@ -25,7 +26,10 @@
             emit-cpp-program)
    (backend 'rust
             "Rust backend for the neutral IR core subset."
-            emit-rust-program)))
+            emit-rust-program)
+   (backend 'javascript
+            "JavaScript ES6+ backend with support for imports, arrow functions, and modern syntax."
+            emit-javascript-program)))
 
 (define (available-backends)
   backend-registry)
